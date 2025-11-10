@@ -9,17 +9,18 @@
 #include <sys/syscall.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#include <sched.h>  
+#include <sched.h>
+#include <stdint.h>
 
 typedef struct mythread *mythread_t;
 
 #define MYTHREAD_OK 0
-#define MYTHREAD_ERR -1   
-#define MYTHREAD_EINVAL -2 
-#define MYTHREAD_ESTATE -3 
-#define MYTHREAD_ESYS -4   
+#define MYTHREAD_ERR -1
+#define MYTHREAD_EINVAL -2
+#define MYTHREAD_ESTATE -3
+#define MYTHREAD_ESYS -4
 
-#define MYTHREAD_STACK_SIZE (1u << 20) 
+#define MYTHREAD_STACK_SIZE (1u << 20)
 
 int mythread_create(mythread_t *thread,
                     void *(*start_routine)(void *),
@@ -45,17 +46,20 @@ typedef struct mythread
 
 static inline int futex_wait(_Atomic int *addr, int expect)
 {
-    return syscall(SYS_futex, addr, FUTEX_WAIT, expect, NULL, NULL, 0);
+    return (int)syscall(SYS_futex, addr, FUTEX_WAIT, expect, NULL, NULL, 0);
 }
 
 static inline int futex_wake(_Atomic int *addr, int n)
 {
-    return syscall(SYS_futex, addr, FUTEX_WAKE, n, NULL, NULL, 0);
+    return (int)syscall(SYS_futex, addr, FUTEX_WAKE, n, NULL, NULL, 0);
 }
 
-static inline void release_thread(mythread* t) {
-    if (!t) return;
-    if (t->stack) {
+static inline void release_thread(mythread *t)
+{
+    if (!t)
+        return;
+    if (t->stack)
+    {
         munmap(t->stack, t->stack_size);
     }
     free(t);
