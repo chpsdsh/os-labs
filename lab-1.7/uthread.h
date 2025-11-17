@@ -19,3 +19,7 @@ int uthread_create(uthread_t **thread,
 
 
 int uthread_join(uthread_t *thread, void **retval);
+
+void uthread_init(void);
+
+void uthread_yield(void);
