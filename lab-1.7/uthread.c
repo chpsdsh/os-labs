@@ -119,9 +119,6 @@ static void thread_trampoline(void) {
     }
 
     schedule();
-
-    fprintf(stderr, "thread_trampoline: unreachable reached\n");
-    exit(1);
 }
 
 
