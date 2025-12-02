@@ -1,20 +1,44 @@
 #include <stdio.h>
 #include <pthread.h>
-#include "mutex.h"
+#include <time.h>
+#include "mutex.h"   
 
-#define N_THREADS 4
+#define N_THREADS 16
 #define N_ITER    1000000
 
-static long long counter = 0;
-static futex_mutex_t mtx;
+static long long counter_futex = 0;
+static long long counter_pthread = 0;
 
-void* worker(void *arg) {
+static futex_mutex_t futex_mtx;
+static pthread_mutex_t pthread_mtx;
+
+
+static double now_sec(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec + ts.tv_nsec * 1e-9;
+}
+
+
+void* worker_futex(void *arg) {
     (void)arg;
 
     for (int i = 0; i < N_ITER; ++i) {
-        fmutex_lock(&mtx);
-        counter++;
-        fmutex_unlock(&mtx);
+        fmutex_lock(&futex_mtx);
+        counter_futex++;
+        fmutex_unlock(&futex_mtx);
+    }
+
+    return NULL;
+}
+
+void* worker_pthread(void *arg) {
+    (void)arg;
+
+    for (int i = 0; i < N_ITER; ++i) {
+        pthread_mutex_lock(&pthread_mtx);
+        counter_pthread++;
+        pthread_mutex_unlock(&pthread_mtx);
     }
 
     return NULL;
@@ -22,24 +46,41 @@ void* worker(void *arg) {
 
 int main(void) {
     pthread_t threads[N_THREADS];
-    fmutex_init(&mtx);
 
-    if (fmutex_trylock(&mtx)) {
-        printf("trylock: locked\n");
-        fmutex_unlock(&mtx);
-    } else {
-        printf("trylock: busy\n");
-    }
+    fmutex_init(&futex_mtx);
+    pthread_mutex_init(&pthread_mtx,NULL);
 
-    for (int i = 0; i < N_THREADS; ++i) {
-        pthread_create(&threads[i], NULL, worker, NULL);
-    }
+    printf("=== fmutex_t (my) ===\n");
 
-    for (int i = 0; i < N_THREADS; ++i) {
+    double t0 = now_sec();
+
+    for (int i = 0; i < N_THREADS; ++i)
+        pthread_create(&threads[i], NULL, worker_futex, NULL);
+
+    for (int i = 0; i < N_THREADS; ++i)
         pthread_join(threads[i], NULL);
-    }
 
-    printf("Expected: %d\n", N_THREADS * N_ITER);
-    printf("Actual:   %lld\n", counter);
+    double t1 = now_sec();
+
+    printf("Expected: %lld\n", (long long)N_THREADS * N_ITER);
+    printf("Actual:   %lld\n", counter_futex);
+    printf("Time:     %.6f s\n\n", t1 - t0);
+
+    printf("=== pthread_mutex_t ===\n");
+
+    double t2 = now_sec();
+
+    for (int i = 0; i < N_THREADS; ++i)
+        pthread_create(&threads[i], NULL, worker_pthread, NULL);
+
+    for (int i = 0; i < N_THREADS; ++i)
+        pthread_join(threads[i], NULL);
+
+    double t3 = now_sec();
+
+    printf("Expected: %lld\n", (long long)N_THREADS * N_ITER);
+    printf("Actual:   %lld\n", counter_pthread);
+    printf("Time:     %.6f s\n", t3 - t2);
+
     return 0;
 }

@@ -1,5 +1,4 @@
 CC      := gcc
-CFLAGS  := -std=c11 -O2 -Wall -Wextra -pthread
 TARGET  := mutex_demo
 
 .PHONY: all clean run
@@ -7,7 +6,7 @@ TARGET  := mutex_demo
 all: $(TARGET)
 
 $(TARGET): main.c mutex.c
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC)  $^ -o $@
 
 run: $(TARGET)
 	./$(TARGET)
