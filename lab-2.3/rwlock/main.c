@@ -6,7 +6,7 @@
 #include <pthread.h>
 
 int main(int argc, char **argv) {
-    int list_size = 1000;
+    int list_size = 100;
 
     if (argc > 1) list_size = atoi(argv[1]);
     if (list_size <= 0) list_size = 100;
