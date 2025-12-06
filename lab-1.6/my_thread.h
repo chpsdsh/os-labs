@@ -14,11 +14,11 @@
 
 typedef struct mythread *mythread_t;
 
-#define MYTHREAD_OK 0
-#define MYTHREAD_ERR -1
+#define MYTHREAD_OK      0
+#define MYTHREAD_ERR    -1
 #define MYTHREAD_EINVAL -2
 #define MYTHREAD_ESTATE -3
-#define MYTHREAD_ESYS -4
+#define MYTHREAD_ESYS   -4
 
 #define MYTHREAD_STACK_SIZE (1u << 20)
 
@@ -37,9 +37,8 @@ typedef struct mythread
     void *retval;
 
     _Atomic int joinable;
-    _Atomic int refs;
     _Atomic int futex_word;
-
+    struct mythread *next_reap;
     void *stack;
     size_t stack_size;
 } mythread;
