@@ -3,6 +3,8 @@
 static _Atomic int reaper_started = 0;
 static _Atomic int reaper_futex = 0;
 static _Atomic(mythread *) reaper_list = NULL;
+static _Atomic int active_threads = 0;
+static void *reaper_stack = NULL;
 
 static void reaper_enqueue(mythread *t)
 {
@@ -26,6 +28,13 @@ static int reaper_func(void *arg)
     {
         while (atomic_load(&reaper_futex) == 0)
         {
+            if (atomic_load(&active_threads) == 0 &&
+                atomic_load(&reaper_list) == NULL)
+            {
+                atomic_store(&reaper_started, 0);
+                return 0;
+            }
+
             futex_wait(&reaper_futex, 0);
         }
 
@@ -48,20 +57,25 @@ static void start_reaper_if_needed(void)
     if (!atomic_compare_exchange_strong(&reaper_started, &expected, 1))
         return;
 
-    void *stack = mmap(NULL, MYTHREAD_STACK_SIZE,
-                       PROT_READ | PROT_WRITE,
-                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK,
-                       -1, 0);
+    if (reaper_stack)
+    {
+        munmap(reaper_stack, MYTHREAD_STACK_SIZE);
+        reaper_stack = NULL;
+    }
+
+    void *stack = mmap(NULL, MYTHREAD_STACK_SIZE, PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
     if (stack == MAP_FAILED)
     {
         atomic_store(&reaper_started, 0);
         return;
     }
 
+    reaper_stack = stack;
     void *stack_top = (uint8_t *)stack + MYTHREAD_STACK_SIZE;
 
-    int flags = CLONE_VM | CLONE_FS | CLONE_FILES |
-                CLONE_SIGHAND | CLONE_SYSVSEM | CLONE_THREAD;
+    int flags = CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
+                CLONE_SYSVSEM | CLONE_THREAD;
 
     int rc = clone(reaper_func, stack_top, flags, NULL);
     if (rc == -1)
@@ -94,12 +108,18 @@ static int trampoline_func(void *arg)
         futex_wake(&reaper_futex, 1);
     }
 
+    int old = atomic_fetch_sub(&active_threads, 1);
+    if (old == 1)
+    {
+        atomic_store(&reaper_futex, 1);
+        futex_wake(&reaper_futex, 1);
+    }
+
     syscall(SYS_exit, 0);
     return 0;
 }
 
-int mythread_create(mythread_t *thread,
-                    void *(*start_routine)(void *),
+int mythread_create(mythread_t *thread, void *(*start_routine)(void *),
                     void *arg)
 {
     if (!thread || !start_routine)
@@ -107,11 +127,14 @@ int mythread_create(mythread_t *thread,
         return MYTHREAD_EINVAL;
     }
 
-    start_reaper_if_needed();
+    atomic_fetch_add(&active_threads, 1);
 
     mythread *t = (mythread *)calloc(1, sizeof(*t));
     if (!t)
+    {
+        atomic_fetch_sub(&active_threads, 1);
         return MYTHREAD_ERR;
+    }
 
     t->start_routine = start_routine;
     t->arg = arg;
@@ -123,20 +146,19 @@ int mythread_create(mythread_t *thread,
 
     t->stack_size = MYTHREAD_STACK_SIZE;
 
-    t->stack = mmap(NULL, t->stack_size,
-                    PROT_READ | PROT_WRITE,
-                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK,
-                    -1, 0);
+    t->stack = mmap(NULL, t->stack_size, PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
 
     if (t->stack == MAP_FAILED)
     {
         free(t);
+        atomic_fetch_sub(&active_threads, 1);
         return MYTHREAD_ESYS;
     }
     void *stack_top = (uint8_t *)t->stack + t->stack_size;
 
-    int flags = CLONE_VM | CLONE_FS | CLONE_FILES |
-                CLONE_SIGHAND | CLONE_SYSVSEM | CLONE_THREAD;
+    int flags = CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
+                CLONE_SYSVSEM | CLONE_THREAD;
 
     int rc = clone(trampoline_func, stack_top, flags, t);
 
@@ -144,6 +166,7 @@ int mythread_create(mythread_t *thread,
     {
         munmap(t->stack, t->stack_size);
         free(t);
+        atomic_fetch_sub(&active_threads, 1);
         return MYTHREAD_ESYS;
     }
 
@@ -187,6 +210,8 @@ int mythread_detach(mythread_t thread)
     {
         return MYTHREAD_ESTATE;
     }
+
+    start_reaper_if_needed();
 
     if (atomic_load(&thread->futex_word) == 1)
     {
