@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -O2 -std=c11
+CFLAGS = -Wall -Wextra -O2 -std=c11 -D_XOPEN_SOURCE=700 -D_DEFAULT_SOURCE
 LDFLAGS = -pthread
 
 BIN = lab23_mutex

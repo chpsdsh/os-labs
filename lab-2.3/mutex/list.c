@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/************* ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ *************/
 
 Storage g_storage;
 

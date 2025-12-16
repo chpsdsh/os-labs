@@ -10,11 +10,11 @@ typedef enum {
     MODE_ASC  = 0,
     MODE_DESC = 1,
     MODE_EQ   = 2  
-} mode_t;
+} _mode_t;
 
 
 void *pairs_counter_thread(void *arg) {
-    mode_t mode = (mode_t)(long)arg;
+    __mode_t mode = (_mode_t)(long)arg;
 
     for (;;) {
 
@@ -22,6 +22,7 @@ void *pairs_counter_thread(void *arg) {
 
         Node *prev_locked = NULL;
         Node *cur = g_storage.head->next; 
+        usleep(50);  
 
         if (!cur) {
             if (mode == MODE_ASC) {
@@ -83,7 +84,7 @@ void *pairs_counter_thread(void *arg) {
 }
 
 
-static int should_swap(Node *cur, Node *next, mode_t mode) {
+static int should_swap(Node *cur, Node *next, _mode_t mode) {
     int len1 = (int)strlen(cur->value);
     int len2 = (int)strlen(next->value);
 
@@ -94,7 +95,7 @@ static int should_swap(Node *cur, Node *next, mode_t mode) {
 }
 
 void *swapper_thread(void *arg) {
-    mode_t mode = (mode_t)(long)arg;
+    _mode_t mode = (_mode_t)(long)arg;
 
     for (;;) {
 
