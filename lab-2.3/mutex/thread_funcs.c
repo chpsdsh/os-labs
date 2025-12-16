@@ -14,17 +14,20 @@ typedef enum {
 
 
 void *pairs_counter_thread(void *arg) {
-    __mode_t mode = (_mode_t)(long)arg;
+    _mode_t mode = (_mode_t)(long)arg;
 
     for (;;) {
-
-        long local_pairs = 0;   
+        long local_pairs = 0;
 
         Node *prev_locked = NULL;
-        Node *cur = g_storage.head->next; 
-        usleep(50);  
+        Node *cur = NULL;
+
+        pthread_mutex_lock(&g_storage.head->lock);
+        cur = g_storage.head->next;
 
         if (!cur) {
+            pthread_mutex_unlock(&g_storage.head->lock);
+
             if (mode == MODE_ASC) {
                 atomic_fetch_add(&asc_iterations, 1);
                 atomic_store(&asc_last_pairs, 0);
@@ -35,23 +38,25 @@ void *pairs_counter_thread(void *arg) {
                 atomic_fetch_add(&eq_iterations, 1);
                 atomic_store(&eq_last_pairs, 0);
             }
+
+            sched_yield();
             continue;
         }
 
         pthread_mutex_lock(&cur->lock);
+        pthread_mutex_unlock(&g_storage.head->lock);
 
         while (cur) {
             Node *next = cur->next;
-            if (!next)
-                break;
+            if (!next) break;
 
             pthread_mutex_lock(&next->lock);
 
             size_t len1 = strlen(cur->value);
             size_t len2 = strlen(next->value);
 
-            if (mode == MODE_ASC  && len1 < len2)  local_pairs++;
-            if (mode == MODE_DESC && len1 > len2)  local_pairs++;
+            if (mode == MODE_ASC  && len1 < len2) local_pairs++;
+            if (mode == MODE_DESC && len1 > len2) local_pairs++;
             if (mode == MODE_EQ   && len1 == len2) local_pairs++;
 
             if (prev_locked)
