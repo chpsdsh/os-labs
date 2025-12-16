@@ -6,7 +6,7 @@
 #include <pthread.h>
 
 int main(int argc, char **argv) {
-    int list_size = 100000;
+    int list_size = 100;
 
     if (argc > 1) list_size = atoi(argv[1]);
     if (list_size <= 0) list_size = 100;
@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
 
     printf("[MUTEX] init list with %d nodes\n", list_size);
     storage_init(&g_storage, list_size);
-    printf("Actual list length: %d\n", storage_length(&g_storage));
+    printf("Actual list length: %d\n", g_storage.count);
 
     pthread_t th_counter_asc;
     pthread_t th_counter_desc;

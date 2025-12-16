@@ -14,6 +14,7 @@ typedef struct _Node {
 
 typedef struct _Storage {
     Node *head;
+    int count
 } Storage;
 
 extern Storage g_storage;
@@ -34,7 +35,6 @@ extern _Atomic long eq_swaps;
 
 void storage_init(Storage *st, int size);
 void storage_destroy(Storage *st);
-int  storage_length(Storage *st);
 
 
 void *pairs_counter_thread(void *arg);

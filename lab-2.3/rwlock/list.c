@@ -43,7 +43,7 @@ void storage_init(Storage *st, int size) {
     st->head = node_create("");  
 
     Node *tail = st->head;
-
+    st->count = size;
     for (int i = 0; i < size; ++i) {
         int len = rand() % 50 + 1;
         char buf[100];
@@ -69,12 +69,3 @@ void storage_destroy(Storage *st) {
     st->head = NULL;
 }
 
-int storage_length(Storage *st) {
-    int len = 0;
-    Node *cur = st->head->next;
-    while (cur) {
-        ++len;
-        cur = cur->next;
-    }
-    return len;
-}

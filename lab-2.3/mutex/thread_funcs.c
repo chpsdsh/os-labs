@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <sched.h>
 #include <stdio.h>
 
@@ -46,7 +47,7 @@ void *pairs_counter_thread(void *arg) {
         pthread_mutex_lock(&cur->lock);
         pthread_mutex_unlock(&g_storage.head->lock);
 
-        while (cur) {
+        while (1) {
             Node *next = cur->next;
             if (!next) break;
 
@@ -99,10 +100,22 @@ static int should_swap(Node *cur, Node *next, _mode_t mode) {
     return 0;
 }
 
+static inline unsigned int make_seed(void) {
+    return (unsigned int)time(NULL) ^ (unsigned int)(uintptr_t)pthread_self();
+}
+
 void *swapper_thread(void *arg) {
     _mode_t mode = (_mode_t)(long)arg;
+    unsigned int seed = make_seed();
 
     for (;;) {
+        int n = g_storage.count;
+        if (n < 2) {
+            sched_yield();
+            continue;
+        }
+
+        int index = (int)(rand_r(&seed) % (unsigned int)(n - 1));
 
         Node *prev = g_storage.head;
         pthread_mutex_lock(&prev->lock);
@@ -110,64 +123,52 @@ void *swapper_thread(void *arg) {
         Node *cur = prev->next;
         if (!cur) {
             pthread_mutex_unlock(&prev->lock);
-            sched_yield();
+            sched_yield();        
             continue;
         }
-
         pthread_mutex_lock(&cur->lock);
 
-        int did_swap_in_pass = 0;
-
-        while (cur && cur->next) {
+        for (int i = 0; i < index; ++i) {
             Node *next = cur->next;
+            if (!next) break;               
             pthread_mutex_lock(&next->lock);
 
-            int swapped = 0;
-
-            if ((rand() & 0xF) == 0) {
-                if (should_swap(cur, next, mode)) {
-                    Node *tail = next->next;
-
-                    prev->next = next;
-                    next->next = cur;
-                    cur->next  = tail;
-
-                    if (mode == MODE_ASC)      atomic_fetch_add(&asc_swaps, 1);
-                    else if (mode == MODE_DESC) atomic_fetch_add(&desc_swaps, 1);
-                    else if (mode == MODE_EQ)   atomic_fetch_add(&eq_swaps, 1);
-
-                    swapped = 1;
-                    did_swap_in_pass = 1;
-                }
-            }
-
-            pthread_mutex_unlock(&next->lock);
-
-            if (swapped) {
-                pthread_mutex_unlock(&cur->lock);
-                pthread_mutex_unlock(&prev->lock);
-                break; 
-            } else {
-                pthread_mutex_unlock(&prev->lock);
-                prev = cur;
-                cur = cur->next;
-                if (cur)
-                    pthread_mutex_lock(&cur->lock);
-            }
-        }
-
-        if (!did_swap_in_pass) {
-            if (cur)
-                pthread_mutex_unlock(&cur->lock);
             pthread_mutex_unlock(&prev->lock);
+            prev = cur;                     
+            cur  = next;                    
         }
+
+        Node *next = cur->next;
+        if (!next) {
+            pthread_mutex_unlock(&cur->lock);
+            pthread_mutex_unlock(&prev->lock);
+            continue;
+        }
+        pthread_mutex_lock(&next->lock);
+
+        if (should_swap(cur, next, mode)) {
+            Node *tail = next->next;
+
+            prev->next = next;
+            next->next = cur;
+            cur->next  = tail;
+
+            if (mode == MODE_ASC)       atomic_fetch_add(&asc_swaps, 1);
+            else if (mode == MODE_DESC) atomic_fetch_add(&desc_swaps, 1);
+            else                        atomic_fetch_add(&eq_swaps, 1);
+
+        }
+
+        pthread_mutex_unlock(&next->lock);
+        pthread_mutex_unlock(&cur->lock);
+        pthread_mutex_unlock(&prev->lock);
+
 
         sched_yield();
     }
 
     return NULL;
 }
-
 
 void *monitor_thread(void *arg) {
     const char *tag = (const char *)arg;
