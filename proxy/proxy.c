@@ -1,6 +1,7 @@
 #include "proxy.h"
 
 #include "cache.h"
+#include "logger.h"
 #include "threadpool.h"
 
 #include <arpa/inet.h>
@@ -73,11 +74,13 @@ static int read_request_headers(int fd, char* buf, int cap) {
 static int connect_host_port(const char* host, int port) {
     struct hostent* he = gethostbyname(host);
     if (!he || !he->h_addr_list || !he->h_addr_list[0]) {
+        log_error("gethostbyname(%s) failed", host);
         return -1;
     }
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
+        log_error("socket() for origin failed, errno=%d", errno);
         return -1;
     }
 
@@ -89,6 +92,7 @@ static int connect_host_port(const char* host, int port) {
     memcpy(&addr.sin_addr, he->h_addr_list[0], (size_t)he->h_length);
 
     if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        log_error("connect(%s:%d) failed, errno=%d", host, port, errno);
         close(fd);
         return -1;
     }
@@ -146,6 +150,7 @@ static int parse_http_get(const char* req, int req_len,
 
     const char* hdrs = line_end + 2;
     const char* end = req + req_len;
+
 
     const char* cur = hdrs;
     while (cur < end) {
@@ -258,6 +263,7 @@ static void handle_client(void* arg) {
     }
 
     if (am_writer) {
+        log_info("CACHE MISS (writer): %s", key);
 
         int sfd = connect_host_port(host, 80);
         if (sfd < 0) {
@@ -285,6 +291,7 @@ static void handle_client(void* arg) {
             cache_release(it);
             return;
         }
+
 
         char buf[4096];
         for (;;) {
@@ -326,6 +333,7 @@ static void handle_client(void* arg) {
         cache_release(it);
         return;
     } else {
+        log_info("CACHE HIT (reader): %s", key);
 
         stream_cached_to_client(cfd, it);
 
@@ -341,6 +349,7 @@ int proxy_run(int listen_port, int worker_threads) {
 
     int sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sfd < 0) {
+        log_error("socket() failed errno=%d", errno);
         return 1;
     }
 
@@ -354,18 +363,22 @@ int proxy_run(int listen_port, int worker_threads) {
     addr.sin_port = htons((uint16_t)listen_port);
 
     if (bind(sfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        log_error("bind() failed port=%d errno=%d", listen_port, errno);
         close(sfd);
         return 1;
     }
 
     if (listen(sfd, 128) < 0) {
+        log_error("listen() failed errno=%d", errno);
         close(sfd);
         return 1;
     }
 
+    log_info("proxy_run listening port=%d workers=%d", listen_port, worker_threads);
 
     threadpool_t* pool = threadpool_create(worker_threads, 1024);
     if (!pool) {
+        log_error("threadpool_create failed");
         close(sfd);
         return 1;
     }
@@ -377,6 +390,7 @@ int proxy_run(int listen_port, int worker_threads) {
         if (cfd < 0) {
             if (errno == EINTR)
                 continue;
+            log_error("accept() failed errno=%d", errno);
             continue;
         }
 

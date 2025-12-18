@@ -8,6 +8,7 @@ SRCS := \
     main.c \
     proxy.c \
     cache.c \
+    logger.c \
     threadpool.c
 
 OBJS := $(SRCS:.c=.o)
